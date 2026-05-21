@@ -1,0 +1,36 @@
+[Unit]
+Description=StealthVPN Server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stealthvpn
+Group=stealthvpn
+
+# Binary built with: cargo build --release -p server
+ExecStart=/usr/local/bin/stealthvpn-server \
+    --listen 0.0.0.0:8080 \
+    --subnet 10.8.0.0/24 \
+    --max-clients 50
+
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/log/stealthvpn
+
+# TUN interface requires CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stealthvpn
+
+[Install]
+WantedBy=multi-user.target
