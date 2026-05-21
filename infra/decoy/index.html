@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Nexova Cloud — Scalable cloud solutions for modern businesses." />
+    <title>Nexova Cloud — Reliable Cloud Infrastructure</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --primary: #0ea5e9;
+            --primary-dark: #0284c7;
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --surface2: #334155;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+            --border: #1e293b;
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        /* ── Navigation ─────────────────────────────────────────────────── */
+        nav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 2rem;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--surface);
+        }
+
+        .logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .nav-links { display: flex; gap: 2rem; list-style: none; }
+        .nav-links a { color: var(--muted); text-decoration: none; font-size: 0.9rem; transition: color .2s; }
+        .nav-links a:hover { color: var(--text); }
+
+        .nav-cta {
+            background: var(--primary);
+            color: #fff;
+            padding: .5rem 1.25rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: background .2s;
+        }
+        .nav-cta:hover { background: var(--primary-dark); }
+
+        /* ── Hero ───────────────────────────────────────────────────────── */
+        .hero {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 7rem 2rem 5rem;
+            background: radial-gradient(ellipse at top, #0ea5e920 0%, transparent 60%);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: .25rem .75rem;
+            background: rgba(14, 165, 233, 0.15);
+            color: var(--primary);
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            border-radius: 99px;
+            font-size: .8rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            letter-spacing: .05em;
+        }
+
+        .hero h1 {
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 800;
+            line-height: 1.15;
+            max-width: 700px;
+            margin-bottom: 1.25rem;
+            background: linear-gradient(135deg, #f1f5f9, #94a3b8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            color: var(--muted);
+            font-size: 1.1rem;
+            max-width: 520px;
+            margin-bottom: 2.5rem;
+        }
+
+        .hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+            padding: .75rem 1.75rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: background .2s, transform .1s;
+        }
+        .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); }
+
+        .btn-ghost {
+            border: 1px solid var(--surface2);
+            color: var(--text);
+            padding: .75rem 1.75rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: border-color .2s;
+        }
+        .btn-ghost:hover { border-color: var(--primary); }
+
+        /* ── Features ───────────────────────────────────────────────────── */
+        .section { padding: 5rem 2rem; max-width: 1100px; margin: 0 auto; }
+        .section-label { color: var(--primary); font-size: .85rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin-bottom: .75rem; }
+        .section h2 { font-size: clamp(1.5rem, 3vw, 2.25rem); font-weight: 700; margin-bottom: 1rem; }
+        .section-sub { color: var(--muted); max-width: 560px; margin-bottom: 3rem; }
+
+        .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 1.75rem;
+            transition: border-color .2s, transform .2s;
+        }
+        .card:hover { border-color: var(--primary); transform: translateY(-3px); }
+
+        .card-icon {
+            width: 44px; height: 44px;
+            background: rgba(14, 165, 233, 0.15);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+        }
+
+        .card h3 { font-size: 1rem; font-weight: 600; margin-bottom: .5rem; }
+        .card p { color: var(--muted); font-size: .9rem; }
+
+        /* ── Stats ──────────────────────────────────────────────────────── */
+        .stats-bar {
+            background: var(--surface);
+            border-top: 1px solid rgba(255,255,255,0.06);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            padding: 3rem 2rem;
+        }
+        .stats-inner { max-width: 1100px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 2rem; justify-content: space-around; text-align: center; }
+        .stat-value { font-size: 2.5rem; font-weight: 800; color: var(--primary); }
+        .stat-label { color: var(--muted); font-size: .9rem; margin-top: .25rem; }
+
+        /* ── Footer ─────────────────────────────────────────────────────── */
+        footer {
+            border-top: 1px solid var(--surface);
+            padding: 2rem;
+            text-align: center;
+            color: var(--muted);
+            font-size: .85rem;
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a class="logo" href="/">Nexova Cloud</a>
+    <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#docs">Docs</a></li>
+        <li><a href="#blog">Blog</a></li>
+    </ul>
+    <a class="nav-cta" href="#get-started">Get Started</a>
+</nav>
+
+<section class="hero">
+    <span class="badge">✦ Now with 99.99% SLA</span>
+    <h1>Cloud Infrastructure Built for Speed &amp; Scale</h1>
+    <p>Deploy globally in seconds. Automatic scaling, edge caching, and enterprise-grade security — without the complexity.</p>
+    <div class="hero-actions">
+        <a class="btn-primary" href="#get-started" id="hero-cta-primary">Start for Free</a>
+        <a class="btn-ghost" href="#docs" id="hero-cta-docs">Read the Docs →</a>
+    </div>
+</section>
+
+<div class="stats-bar">
+    <div class="stats-inner">
+        <div>
+            <div class="stat-value">99.99%</div>
+            <div class="stat-label">Uptime SLA</div>
+        </div>
+        <div>
+            <div class="stat-value">32</div>
+            <div class="stat-label">Global Regions</div>
+        </div>
+        <div>
+            <div class="stat-value">&lt;10ms</div>
+            <div class="stat-label">Median Latency</div>
+        </div>
+        <div>
+            <div class="stat-value">50K+</div>
+            <div class="stat-label">Happy Customers</div>
+        </div>
+    </div>
+</div>
+
+<main>
+    <div class="section" id="features">
+        <p class="section-label">Platform</p>
+        <h2>Everything you need to ship faster</h2>
+        <p class="section-sub">From compute to databases to CDN — all managed, all monitored, all on one platform.</p>
+
+        <div class="grid-3">
+            <div class="card">
+                <div class="card-icon">⚡</div>
+                <h3>Instant Deployment</h3>
+                <p>Push your code and we handle the rest. Blue-green deployments with zero downtime by default.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🌐</div>
+                <h3>Global Edge Network</h3>
+                <p>32 points of presence. Your content is automatically served from the closest region to your users.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🔒</div>
+                <h3>Automatic TLS</h3>
+                <p>Free certificates for every domain. Auto-renewed before expiry. TLS 1.3 enforced by default.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📈</div>
+                <h3>Auto-scaling</h3>
+                <p>Scale from zero to millions of requests per second. Pay only for what you actually use.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🗄️</div>
+                <h3>Managed Databases</h3>
+                <p>PostgreSQL, Redis, and object storage with automated backups and point-in-time recovery.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🔍</div>
+                <h3>Observability</h3>
+                <p>Built-in metrics, logs, and distributed tracing. No extra setup required.</p>
+            </div>
+        </div>
+    </div>
+</main>
+
+<footer>
+    <p>&copy; 2024 Nexova Cloud, Inc. All rights reserved. &nbsp;·&nbsp;
+       <a href="/privacy" style="color:inherit">Privacy</a> &nbsp;·&nbsp;
+       <a href="/terms" style="color:inherit">Terms</a>
+    </p>
+</footer>
+
+</body>
+</html>

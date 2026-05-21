@@ -15,7 +15,7 @@ use anyhow::{bail, Context, Result};
 use common::{
     crypto::{derive_session_keys, CipherState, EphemeralKeypair},
     frame::{decode_encrypted, decode_plain, encode_encrypted, encode_plain},
-    obfuscation::ObfuscationConfig,
+    obfuscation::{self, ObfuscationConfig},
     protocol::{ClientHello, ClientReady, MessageType, ServerHello, SessionEstablished},
 };
 use futures_util::{SinkExt, StreamExt};
@@ -191,7 +191,8 @@ where
     Ok((session, packet_rx, send_cipher, recv_cipher))
 }
 
-/// TUN → WS: read packets from the session channel, encrypt, send to client.
+/// TUN → WS: read packets from the session channel, optionally fragment large
+/// packets, encrypt each fragment, and send to the client.
 async fn forward_tun_to_ws<Sink>(
     mut packet_rx: PacketRx,
     ws_sink: &mut Sink,
@@ -209,20 +210,39 @@ async fn forward_tun_to_ws<Sink>(
                     None => { debug!("Session packet channel closed"); break; }
                 };
 
-                // Optional jitter before sending
-                let delay = common::obfuscation::jitter_delay(obf);
+                // Optional timing jitter
+                let delay = obfuscation::jitter_delay(obf);
                 if !delay.is_zero() {
                     tokio::time::sleep(delay).await;
                 }
 
-                match encode_encrypted(send_cipher, MessageType::IpPacket, &packet, obf) {
-                    Ok(frame) => {
-                        if ws_sink.send(Message::Binary(frame.into())).await.is_err() {
-                            debug!("WS sink closed");
-                            break;
+                // Fragmentation: split large packets into multiple frames
+                if obfuscation::needs_fragmentation(&packet, obf) {
+                    let fragments = obfuscation::fragment_packet(&packet, obf);
+                    debug!("Server fragmenting packet ({} bytes) into {} fragments",
+                        packet.len(), fragments.len());
+
+                    for fragment in fragments {
+                        match encode_encrypted(send_cipher, MessageType::IpPacketFragment, &fragment, obf) {
+                            Ok(frame) => {
+                                if ws_sink.send(Message::Binary(frame.into())).await.is_err() {
+                                    debug!("WS sink closed during fragment send");
+                                    return;
+                                }
+                            }
+                            Err(e) => { error!("Encrypt error (fragment): {e}"); return; }
                         }
                     }
-                    Err(e) => { error!("Encrypt error: {e}"); break; }
+                } else {
+                    match encode_encrypted(send_cipher, MessageType::IpPacket, &packet, obf) {
+                        Ok(frame) => {
+                            if ws_sink.send(Message::Binary(frame.into())).await.is_err() {
+                                debug!("WS sink closed");
+                                break;
+                            }
+                        }
+                        Err(e) => { error!("Encrypt error: {e}"); break; }
+                    }
                 }
             }
             _ = stop_rx.recv() => break,
@@ -230,7 +250,8 @@ async fn forward_tun_to_ws<Sink>(
     }
 }
 
-/// WS → TUN: receive packets from client, decrypt, forward to TUN writer.
+/// WS → TUN: receive frames from client, decrypt, reassemble fragments if
+/// needed, and forward complete IP packets to the TUN writer.
 async fn forward_ws_to_tun<Stream>(
     ws_recv: &mut Stream,
     recv_cipher: &CipherState,
@@ -240,6 +261,9 @@ async fn forward_ws_to_tun<Stream>(
 ) where
     Stream: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
 {
+    // In-order fragment reassembly buffer
+    let mut fragment_buf: Vec<u8> = Vec::new();
+
     loop {
         tokio::select! {
             maybe_msg = ws_recv.next() => {
@@ -252,20 +276,39 @@ async fn forward_ws_to_tun<Stream>(
                 let data = match msg {
                     Message::Binary(b) => b,
                     Message::Close(_) => { debug!("WS Close received"); break; }
-                    Message::Ping(p) => {
-                        // tokio-tungstenite auto-responds to pings; ignore here
-                        let _ = p;
-                        continue;
-                    }
+                    Message::Ping(_) | Message::Pong(_) => continue,
                     _ => continue,
                 };
 
                 match decode_encrypted(recv_cipher, &data) {
                     Ok((MessageType::IpPacket, packet)) => {
                         session.touch();
+                        if !fragment_buf.is_empty() {
+                            warn!(session_id = %session.id, "Discarding {} bytes of incomplete fragment", fragment_buf.len());
+                            fragment_buf.clear();
+                        }
                         if tun_tx.send(packet).await.is_err() {
                             error!("TUN channel closed");
                             break;
+                        }
+                    }
+                    Ok((MessageType::IpPacketFragment, fragment)) => {
+                        session.touch();
+                        fragment_buf.extend_from_slice(&fragment);
+                        debug!(session_id = %session.id, "Fragment received ({} bytes, buf={} total)",
+                            fragment.len(), fragment_buf.len());
+
+                        // Flush if we have a complete IP packet
+                        if let Ok(info) = common::packet::parse_ip_header(&fragment_buf) {
+                            if fragment_buf.len() >= info.total_length {
+                                let packet = fragment_buf[..info.total_length].to_vec();
+                                fragment_buf.drain(..info.total_length);
+                                debug!(session_id = %session.id, "Reassembled packet ({} bytes)", packet.len());
+                                if tun_tx.send(packet).await.is_err() {
+                                    error!("TUN channel closed (reassembled)");
+                                    break;
+                                }
+                            }
                         }
                     }
                     Ok((MessageType::Heartbeat, _)) => {

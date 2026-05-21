@@ -1,5 +1,6 @@
 pub mod crypto;
 pub mod frame;
+pub mod key_rotation;
 pub mod obfuscation;
 pub mod packet;
 pub mod protocol;

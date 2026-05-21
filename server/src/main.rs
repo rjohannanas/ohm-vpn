@@ -37,13 +37,33 @@ struct Args {
     #[arg(long, default_value_t = 50)]
     max_clients: usize,
 
-    /// Maximum obfuscation padding (bytes). Set 0 to disable.
-    #[arg(long, default_value_t = 128)]
+    // ── Obfuscation ──────────────────────────────────────────────────────────
+
+    /// Minimum random padding per packet (bytes)
+    #[arg(long, default_value_t = 16)]
+    min_padding: usize,
+
+    /// Maximum random padding per packet (bytes). Set 0 to disable.
+    #[arg(long, default_value_t = 256)]
     max_padding: usize,
 
-    /// Maximum timing jitter (ms). Set 0 to disable.
+    /// Maximum timing jitter before sending each packet (ms). Set 0 to disable.
     #[arg(long, default_value_t = 5)]
     max_jitter_ms: u64,
+
+    /// Fragment packets larger than this (bytes). Set 0 to disable.
+    #[arg(long, default_value_t = 1400)]
+    fragment_threshold: usize,
+
+    /// Pad frames to the nearest size bucket (stronger anti-DPI, higher overhead).
+    #[arg(long, default_value_t = false)]
+    normalize_sizes: bool,
+
+    // ── Session management ───────────────────────────────────────────────────
+
+    /// How often (seconds) to run the stale-session eviction sweep.
+    #[arg(long, default_value_t = 60)]
+    eviction_interval_secs: u64,
 }
 
 #[tokio::main]
@@ -59,14 +79,23 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     info!("StealthVPN Server v{}", env!("CARGO_PKG_VERSION"));
-    info!("Listen: {}  VPN: {}/{}", args.listen, args.server_ip, args.netmask);
-    info!("Max clients: {}  Padding: 0-{} B  Jitter: 0-{} ms",
-          args.max_clients, args.max_padding, args.max_jitter_ms);
+    info!(
+        "Listen: {}  VPN: {}/{}  Max clients: {}",
+        args.listen, args.server_ip, args.netmask, args.max_clients
+    );
+    info!(
+        "Obfuscation: padding=[{},{}] jitter={}ms fragment_threshold={} normalize={}",
+        args.min_padding, args.max_padding, args.max_jitter_ms,
+        args.fragment_threshold, args.normalize_sizes
+    );
+    info!("Reminder: Ensure your pre-shared keys are rotated periodically for security.");
 
     let obfuscation = ObfuscationConfig {
-        min_padding: 16,
+        min_padding: args.min_padding,
         max_padding: args.max_padding,
         max_jitter_ms: args.max_jitter_ms,
+        fragment_threshold: args.fragment_threshold,
+        normalize_sizes: args.normalize_sizes,
     };
 
     // ── Session manager ──────────────────────────────────────────────────────
@@ -84,11 +113,13 @@ async fn main() -> Result<()> {
     // TUN reader: routes internet-bound packets back to the correct client
     let _tun_reader_task = tun::spawn_tun_reader_task(tun_reader, router);
 
-    // ── Stale session eviction (every 60 s) ──────────────────────────────────
+    // ── Stale session eviction ───────────────────────────────────────────────
     {
         let sessions_gc = sessions.clone();
+        let interval_secs = args.eviction_interval_secs;
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(interval_secs));
             loop {
                 interval.tick().await;
                 sessions_gc.evict_stale_sessions();

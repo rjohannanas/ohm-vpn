@@ -50,6 +50,10 @@ pub enum MessageType {
     SessionEstablished = 0x04,
     /// A tunneled IP packet.
     IpPacket = 0x10,
+    /// A fragment of a tunneled IP packet that exceeded the fragmentation
+    /// threshold. Multiple consecutive fragments must be reassembled by the
+    /// receiver before the payload can be interpreted as an IP packet.
+    IpPacketFragment = 0x11,
     /// Keep-alive ping.
     Heartbeat = 0x20,
     /// Graceful disconnect notification.
@@ -66,6 +70,7 @@ impl TryFrom<u8> for MessageType {
             0x03 => Ok(Self::ClientReady),
             0x04 => Ok(Self::SessionEstablished),
             0x10 => Ok(Self::IpPacket),
+            0x11 => Ok(Self::IpPacketFragment),
             0x20 => Ok(Self::Heartbeat),
             0xFF => Ok(Self::Disconnect),
             other => Err(ProtocolError::UnknownMessageType(other)),
@@ -207,6 +212,7 @@ mod tests {
             MessageType::ClientReady,
             MessageType::SessionEstablished,
             MessageType::IpPacket,
+            MessageType::IpPacketFragment,
             MessageType::Heartbeat,
             MessageType::Disconnect,
         ];

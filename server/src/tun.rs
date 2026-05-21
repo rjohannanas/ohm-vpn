@@ -27,6 +27,22 @@ pub fn create_tun(
         .with_context(|| format!("Failed to create TUN '{name}' — CAP_NET_ADMIN required"))?;
 
     tracing::info!("TUN '{name}' up: {address}/{netmask}");
+
+    // Configure NAT masquerading to give clients internet access
+    #[cfg(target_os = "linux")]
+    {
+        tracing::info!("Configuring NAT via iptables...");
+        let _ = std::process::Command::new("iptables")
+            .args(["-t", "nat", "-A", "POSTROUTING", "-o", "eth0", "-j", "MASQUERADE"])
+            .status();
+        let _ = std::process::Command::new("iptables")
+            .args(["-A", "FORWARD", "-i", name, "-j", "ACCEPT"])
+            .status();
+        let _ = std::process::Command::new("iptables")
+            .args(["-A", "FORWARD", "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"])
+            .status();
+    }
+
     let (r, w) = tokio::io::split(device);
     Ok((TunReader(r), TunWriter(w)))
 }

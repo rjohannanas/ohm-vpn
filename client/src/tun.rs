@@ -17,7 +17,7 @@ use std::net::Ipv4Addr;
 use std::process::Command;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tracing::{info, warn};
-use tun::AsyncDevice;
+use tun::{AbstractDevice, AsyncDevice};
 
 
 
@@ -33,11 +33,10 @@ pub struct TunWriter(WriteHalf<AsyncDevice>);
 /// Create and configure the client TUN interface with the IP assigned by the server.
 ///
 /// **Requires `CAP_NET_ADMIN`** or root privileges.
-pub fn create_tun(assigned_ip: Ipv4Addr, netmask: Ipv4Addr) -> Result<(TunReader, TunWriter)> {
+pub fn create_tun(assigned_ip: Ipv4Addr, netmask: Ipv4Addr) -> Result<(String, TunReader, TunWriter)> {
     let mut config = tun::Configuration::default();
-
     config
-        .name(TUN_NAME)
+        .tun_name(TUN_NAME)
         .address(assigned_ip)
         .netmask(netmask)
         .mtu(MTU)
@@ -46,10 +45,17 @@ pub fn create_tun(assigned_ip: Ipv4Addr, netmask: Ipv4Addr) -> Result<(TunReader
     let device = tun::create_as_async(&config)
         .with_context(|| format!("Failed to create client TUN interface — is CAP_NET_ADMIN set?"))?;
 
-    info!("Client TUN up: {TUN_NAME} assigned {assigned_ip}/{netmask}");
+    let actual_name = device.tun_name().unwrap_or_else(|_| TUN_NAME.to_string());
+    info!("Client TUN up: {actual_name} assigned {assigned_ip}/{netmask}");
+
+    // Dale tiempo al kernel de Linux para registrar la interfaz
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+
+    // Fuerza a levantar la interfaz explícitamente por si el sistema no lo hizo
+    let _ = run_ip(&["link", "set", "dev", &actual_name, "up"]);
 
     let (reader, writer) = tokio::io::split(device);
-    Ok((TunReader(reader), TunWriter(writer)))
+    Ok((actual_name, TunReader(reader), TunWriter(writer)))
 }
 
 impl TunReader {
@@ -71,47 +77,40 @@ impl TunWriter {
 
 /// System routing configuration managed by the client.
 pub struct RouteGuard {
-    /// VPN server's real (public) IP — needed for the bypass route.
     server_ip: Ipv4Addr,
-    /// Original default gateway before we installed our routes.
     original_gateway: Ipv4Addr,
-    /// Network interface used before VPN (e.g. "eth0", "wlan0").
     original_iface: String,
+    tun_name: String,
 }
 
 impl RouteGuard {
-    /// Install VPN routes. Saves the current default gateway so it can be
-    /// restored on `Drop`.
-    ///
-    /// Route plan:
-    /// - `server_ip` via `original_gateway` dev `original_iface` (bypass route)
-    /// - `0.0.0.0/0` via TUN (default route through VPN)
-    pub fn install(server_ip: Ipv4Addr) -> Result<Self> {
+    pub fn install(server_ip: Ipv4Addr, tun_name: String) -> Result<Self> {
         let (original_gateway, original_iface) = detect_default_gateway()?;
 
         info!(
-            "Installing VPN routes (server={server_ip}, gw={original_gateway}, iface={original_iface})"
+            "Installing VPN routes (server={server_ip}, gw={original_gateway}, iface={original_iface}, tun={tun_name})"
         );
 
-        // 1. Bypass route: server IP → real gateway (avoid loop)
+        // 1. Bypass route
         run_ip(&[
-            "route", "add", &server_ip.to_string(),
+            "route", "replace", &server_ip.to_string(),
             "via", &original_gateway.to_string(),
             "dev", &original_iface,
         ])?;
 
-        // 2. Default route → TUN
-        run_ip(&["route", "add", "default", "dev", TUN_NAME])?;
+        // 2. Override default route
+        run_ip(&["route", "replace", "0.0.0.0/1", "dev", &tun_name])?;
+        run_ip(&["route", "replace", "128.0.0.0/1", "dev", &tun_name])?;
 
-        Ok(Self { server_ip, original_gateway, original_iface })
+        Ok(Self { server_ip, original_gateway, original_iface, tun_name })
     }
 
-    /// Remove VPN routes and restore the original default gateway.
     pub fn remove(&self) -> Result<()> {
         warn!("Removing VPN routes and restoring default gateway");
 
-        // Remove default route via TUN
-        let _ = run_ip(&["route", "del", "default", "dev", TUN_NAME]);
+        // Remove override routes
+        let _ = run_ip(&["route", "del", "0.0.0.0/1", "dev", &self.tun_name]);
+        let _ = run_ip(&["route", "del", "128.0.0.0/1", "dev", &self.tun_name]);
 
         // Remove bypass route
         let _ = run_ip(&[
@@ -120,14 +119,7 @@ impl RouteGuard {
             "dev", &self.original_iface,
         ]);
 
-        // Restore original default gateway
-        run_ip(&[
-            "route", "add", "default",
-            "via", &self.original_gateway.to_string(),
-            "dev", &self.original_iface,
-        ])?;
-
-        info!("Default gateway restored: {} dev {}", self.original_gateway, self.original_iface);
+        info!("VPN override routes removed. Original default gateway automatically resumes.");
         Ok(())
     }
 }

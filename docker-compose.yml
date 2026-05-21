@@ -1,0 +1,70 @@
+version: "3.8"
+
+services:
+  vpn:
+    build: .
+    image: ohm-vpn-server:latest
+    container_name: ohm-vpn-server
+    restart: unless-stopped
+    # The VPN needs NET_ADMIN capability and access to the TUN device to create virtual network interfaces
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    # We pass the CLI arguments to configure the VPN
+    command:
+      - "--subnet"
+      - "10.8.0.0"
+      - "--max-clients"
+      - "50"
+      # Obfuscation profile settings (aggressive)
+      - "--min-padding"
+      - "64"
+      - "--max-padding"
+      - "512"
+      - "--max-jitter-ms"
+      - "20"
+      - "--fragment-threshold"
+      - "900"
+      - "--normalize-sizes"
+    labels:
+      - "traefik.enable=true"
+      # Route traffic matching ohm.seteloee.com to this container
+      - "traefik.http.routers.ohmvpn.rule=Host(`ohm.seteloee.com`)"
+      # Use the HTTPS entrypoint
+      - "traefik.http.routers.ohmvpn.entrypoints=websecure"
+      # Use the existing Let's Encrypt cert resolver configured in your stack
+      - "traefik.http.routers.ohmvpn.tls.certresolver=letsencrypt"
+      # Tell Traefik which port the VPN server is listening on internally
+      - "traefik.http.services.ohmvpn.loadbalancer.server.port=8080"
+      # Explicitly tell Traefik which network to use for routing
+      - "traefik.docker.network=stack_default"
+    environment:
+      - RUST_LOG=debug
+
+  download:
+    image: nginx:alpine
+    container_name: ohm-vpn-download
+    restart: unless-stopped
+    volumes:
+      # Compartimos toda la carpeta release, no el archivo suelto, para evitar caché de inodos
+      - ./target/release:/usr/share/nginx/html/download_dir:ro
+    labels:
+      - "traefik.enable=true"
+      # Enrutar a la carpeta
+      - "traefik.http.routers.ohmvpn-dl.rule=Host(`ohm.seteloee.com`) && PathPrefix(`/download`)"
+      - "traefik.http.routers.ohmvpn-dl.entrypoints=websecure"
+      - "traefik.http.routers.ohmvpn-dl.tls.certresolver=letsencrypt"
+      - "traefik.http.middlewares.dl-rewrite.replacepathregex.regex=^/download(.*)"
+      - "traefik.http.middlewares.dl-rewrite.replacepathregex.replacement=/download_dir/stealthvpn-client"
+      - "traefik.http.routers.ohmvpn-dl.middlewares=dl-rewrite"
+      - "traefik.docker.network=stack_default"
+      
+networks:
+  default:
+    # Connect this container to your existing Traefik network
+    # Based on your stack path (/home/setel_oee/stack), the default network name is usually 'stack_default'
+    name: stack_default
+    external: true

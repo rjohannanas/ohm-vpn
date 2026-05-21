@@ -107,7 +107,11 @@ fn parse_ipv6(packet: &[u8]) -> Result<IpPacketInfo, PacketError> {
 pub fn strip_pi_header(buf: &[u8]) -> &[u8] {
     #[cfg(target_os = "linux")]
     {
-        if buf.len() >= 4 {
+        // A PI header starts with 2 bytes of flags (usually 0x00 0x00)
+        // followed by 2 bytes of protocol (e.g., 0x08 0x00 for IPv4).
+        // An IPv4 packet starts with 0x45 (version 4, IHL 5).
+        // An IPv6 packet starts with 0x60.
+        if buf.len() >= 4 && (buf[0] == 0x00 && buf[1] == 0x00) {
             &buf[4..]
         } else {
             buf

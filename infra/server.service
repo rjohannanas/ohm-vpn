@@ -1,6 +1,7 @@
 [Unit]
 Description=StealthVPN Server
-After=network.target
+Documentation=https://github.com/your-org/ohm-vpn
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -9,21 +10,43 @@ User=stealthvpn
 Group=stealthvpn
 
 # Binary built with: cargo build --release -p server
+# Install with:      sudo cp target/release/stealthvpn-server /usr/local/bin/
 ExecStart=/usr/local/bin/stealthvpn-server \
-    --listen 0.0.0.0:8080 \
-    --subnet 10.8.0.0/24 \
-    --max-clients 50
+    --listen 127.0.0.1:8080 \
+    --server-ip 10.8.0.1 \
+    --subnet 10.8.0.0 \
+    --netmask 255.255.255.0 \
+    --max-clients 50 \
+    --min-padding 16 \
+    --max-padding 256 \
+    --max-jitter-ms 5 \
+    --fragment-threshold 1400 \
+    --eviction-interval-secs 60
 
 Restart=on-failure
 RestartSec=5s
+TimeoutStopSec=10s
 
-# Security hardening
+# ── Security hardening ────────────────────────────────────────────────────────
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=no          # must be no — TUN device access required
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+
+# Writable paths: logs only
 ReadWritePaths=/var/log/stealthvpn
 
-# TUN interface requires CAP_NET_ADMIN
+# TUN interface requires CAP_NET_ADMIN; nothing else
 AmbientCapabilities=CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_NET_ADMIN
 

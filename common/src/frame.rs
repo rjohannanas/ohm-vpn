@@ -35,15 +35,20 @@ pub fn encode_encrypted(
     payload: &[u8],
     obf: &ObfuscationConfig,
 ) -> Result<Vec<u8>> {
-    // Plaintext: [msg_type][payload][random padding]
-    let mut plaintext = Vec::with_capacity(1 + payload.len() + obf.max_padding);
+    // Plaintext: [msg_type][payload][random padding][normalization padding]
+    let mut plaintext = Vec::with_capacity(1 + payload.len() + obf.max_padding + 4096);
     plaintext.push(msg_type as u8);
     plaintext.extend_from_slice(payload);
-    let padding_size = apply_padding(&mut plaintext, obf);
+
+    // Both padding steps are counted together so the receiver can strip them all.
+    let mut total_padding = apply_padding(&mut plaintext, obf) as usize;
+    if obf.normalize_sizes {
+        total_padding += crate::obfuscation::normalize_to_bucket(&mut plaintext);
+    }
 
     let (nonce, ciphertext) = cipher.encrypt(&plaintext)?;
 
-    let header = FrameHeader { version: PROTOCOL_VERSION, nonce, padding_size };
+    let header = FrameHeader { version: PROTOCOL_VERSION, nonce, padding_size: total_padding as u16 };
     let mut frame = header.to_bytes();
     frame.extend_from_slice(&ciphertext);
     Ok(frame)
